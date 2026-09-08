@@ -1,4 +1,4 @@
-const db = require('./firebase-config');
+const DB_URL = "https://internet-arzan-default-rtdb.firebaseio.com";
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -7,39 +7,52 @@ module.exports = async (req, res) => {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { operator, id } = req.query; // operator: 'mci' | 'irancell'
+  const { operator, id } = req.query;
 
-  if (req.method === 'GET') {
-    // دریافت لیست تمامی بسته‌ها
-    const snapshot = await db.ref('packages').once('value');
-    return res.status(200).json(snapshot.val() || {});
-  }
+  try {
+    // دریافت لیست همه بسته‌ها
+    if (req.method === 'GET' && !operator) {
+      const response = await fetch(`${DB_URL}/packages.json`);
+      const data = await response.json();
+      return res.status(200).json(data || {});
+    }
 
-  if (!operator || (operator !== 'mci' && operator !== 'irancell')) {
-    return res.status(400).json({ error: 'اپراتور نامعتبر است (mci یا irancell)' });
-  }
+    if (!operator || (operator !== 'mci' && operator !== 'irancell')) {
+      return res.status(400).json({ error: 'اپراتور نامعتبر است' });
+    }
 
-  const path = `packages/${operator}`;
+    // ثبت بسته جدید
+    if (req.method === 'POST') {
+      const packageData = { ...req.body, createdAt: Date.now() };
+      const response = await fetch(`${DB_URL}/packages/${operator}.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(packageData)
+      });
+      const data = await response.json();
+      return res.status(200).json({ message: 'بسته ثبت شد', id: data.name });
+    }
 
-  if (req.method === 'POST') {
-    // ایجاد بسته جدید
-    const packageData = { ...req.body, createdAt: Date.now() };
-    const newRef = db.ref(path).push();
-    await newRef.set(packageData);
-    return res.status(200).json({ message: 'بسته ثبت شد', id: newRef.key });
-  }
-
-  if (req.method === 'PUT') {
     // ویرایش بسته
-    if (!id) return res.status(400).json({ error: 'شناسه بسته الزامی است' });
-    await db.ref(`${path}/${id}`).update(req.body);
-    return res.status(200).json({ message: 'بسته ویرایش شد' });
-  }
+    if (req.method === 'PUT') {
+      if (!id) return res.status(400).json({ error: 'شناسه بسته الزامی است' });
+      await fetch(`${DB_URL}/packages/${operator}/${id}.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body)
+      });
+      return res.status(200).json({ message: 'بسته ویرایش شد' });
+    }
 
-  if (req.method === 'DELETE') {
     // حذف بسته
-    if (!id) return res.status(400).json({ error: 'شناسه بسته الزامی است' });
-    await db.ref(`${path}/${id}`).remove();
-    return res.status(200).json({ message: 'بسته حذف شد' });
+    if (req.method === 'DELETE') {
+      if (!id) return res.status(400).json({ error: 'شناسه بسته الزامی است' });
+      await fetch(`${DB_URL}/packages/${operator}/${id}.json`, {
+        method: 'DELETE'
+      });
+      return res.status(200).json({ message: 'بسته حذف شد' });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
